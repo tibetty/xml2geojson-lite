@@ -1,0 +1,29 @@
+{
+  "name": "xml2geojson-lite",
+  "version": "0.5.0",
+  "description": "a lightweight yet faster osm xml to geojson convertor - about 8x faster than xmldom + osmtogeojson in most situations - implemented in pure JavaScript without any 3rd party dependency",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tibetty/xml2geojson-lite.git"
+  },
+  "keywords": [
+    "openstreetmap",
+    "osm",
+    "xml",
+    "geojson",
+    "polygon",
+    "multipolygon"
+  ],
+  "author": "tibetty",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/tibetty/xml2geojson-lite/issues"
+  },
+  "homepage": "https://github.com/tibetty/xml2geojson-lite#readme",
+  "dependencies": {
+  }
+}
