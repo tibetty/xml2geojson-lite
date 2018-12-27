@@ -1,4 +1,4 @@
-module.exports = (xml) => {
+let xml2geojson = (xml) => {
 	let ommitComments = s => s.replace(/<!--[^]+?-->/g, '');
 	xml = ommitComments(xml);
 

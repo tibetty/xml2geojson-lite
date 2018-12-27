@@ -8,7 +8,6 @@ const xmlFiles = ['zhucheng.xml', 'hebei.xml', 'tokyodo.xml'];
 for (let file of xmlFiles) {
 	console.log(`---processing time comparison for ${file}---`);
 	let content = fs.readFileSync(file, 'utf-8');
-
 	let stime = new Date().getTime();
 	const xmlcontent = new DOMParser().parseFromString(content);
 	osmtogeojson(xmlcontent);
