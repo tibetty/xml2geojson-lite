@@ -43,7 +43,7 @@ module.exports = (xml) => {
 		addToMap(lastMap, coordsToKey(last(way)), way);
 	}
 
-	let letructRings = (ways, firstMap, lastMap, direction) => {
+	let constructRings = (ways, firstMap, lastMap, direction) => {
 		let isRing = a => coordsToKey(first(a)) === coordsToKey(last(a));
 		let strToFloat = el => el instanceof Array? el.map(strToFloat) : parseFloat(el);
 
@@ -100,8 +100,8 @@ module.exports = (xml) => {
 		return rs;
 	}
 
-	let outerRings = letructRings(outerWays, outerFirstMap, outerLastMap, 'counterclockwise'),
-		innerRings = letructRings(innerWays, innerFirstMap, innerLastMap, 'clockwise');
+	let outerRings = constructRings(outerWays, outerFirstMap, outerLastMap, 'counterclockwise'),
+		innerRings = constructRings(innerWays, innerFirstMap, innerLastMap, 'clockwise');
 	
 	// link inner polygons to outer containers
 	let ptInsidePolygon = (pt, polygon, lngIdx, latIdx) => {
