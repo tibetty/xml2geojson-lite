@@ -1,7 +1,6 @@
 module.exports = (osm, opts) => {
-	const XmlParser = require('./xmlparser-lite.js');
-	const xmlParser = new XmlParser();
-
+	const XmlParser = require('./xmlparser.js');
+	
 	let coordsToKey = (a) => a.join(',');
 	let first = a => a[0];
 	let last = a => a[a.length - 1];
@@ -28,7 +27,8 @@ module.exports = (osm, opts) => {
 	let features = [];
 	let relProps = {};
 
-	let processMember = node => {
+	const xmlParser = new XmlParser({progressive: true});
+	xmlParser.addListener('</osm.relation.member>', node => {
 		with (node) {
 			if ($type === 'way') {
 				let way = [];
@@ -53,28 +53,12 @@ module.exports = (osm, opts) => {
 				features.push(feature);
 			}
 		}
-	}
-
-	let processTag = node => {
-		with (node) {
-			relProps[$k] = $v;
-		}
-	}
-
-	let processRelation = node => {
-		relProps.id = 'relation/' + node.$id;
-	}
-
-	let processBounds = node => {
-		relProps.bbox = [parseFloat(node.$minlon), parseFloat(node.$minlat), parseFloat(node.$maxlon), parseFloat(node.$maxlat)];
-	}
-
-	xmlParser.addListener('</osm.relation.member>', processMember);
+	});
 
 	if (opts && opts.allFeatures) {
-		xmlParser.addListener('<osm.relation>', processRelation);
-		xmlParser.addListener('<osm.relation.bounds>', processBounds);
-		xmlParser.addListener('</osm.relation.tag>', processTag);
+		xmlParser.addListener('<osm.relation>', node => relProps.id = 'relation/' + node.$id);
+		xmlParser.addListener('<osm.relation.bounds>', node => relProps.bbox = [parseFloat(node.$minlon), parseFloat(node.$minlat), parseFloat(node.$maxlon), parseFloat(node.$maxlat)]);
+		xmlParser.addListener('</osm.relation.tag>', node => relProps[node.$k] = node.$v);
 	}
 	
 	xmlParser.parse(osm);

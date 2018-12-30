@@ -1,20 +1,21 @@
 module.exports = class{
-	constructor(queryParent) {
-		this.queryParent = queryParent? true : false;
-		if (this.queryParent) {
-			this.parentMap = new WeakMap();
+	constructor(opts) {
+		if (opts) {
+			this.queryParent = opts.queryParent? true : false;
+			this.progressive = opts.progressive;
+			if (this.queryParent) this.parentMap = new WeakMap();
 		}
 		this.evtListeners = {};
 	}
 
 	parse(xml, parent, dir) {
 		dir = dir? dir + '.' : '';
-		let elemRegEx = /<([^ >\/]+)(.*?)>/g, elemMatch = null, nodes = [];
-		while (elemMatch = elemRegEx.exec(xml)) {
-			let tag = elemMatch[1], node = {tag}, fullTag = dir + tag; 
+		let nodeRegEx = /<([^ >\/]+)(.*?)>/g, nodeMatch = null, nodes = [];
+		while (nodeMatch = nodeRegEx.exec(xml)) {
+			let tag = nodeMatch[1], node = {tag}, fullTag = dir + tag; 
 
 			let closed = false;
-			let attRegEx = /([^ ]+?)="(.+?)"/g, attrText = elemMatch[2].trim(), attMatch = null;
+			let attRegEx = /([^ ]+?)="(.+?)"/g, attrText = nodeMatch[2].trim(), attMatch = null;
 			if (attrText.endsWith('/') || tag.startsWith('?') || tag.startsWith('!')) {
 				closed = true;
 			}
@@ -26,15 +27,14 @@ module.exports = class{
 			}
 
 			if (!hasAttrs && attrText !== '') node.text = attrText;
-			this.emit(`<${fullTag}>`, node, parent);
-
+			if (this.progressive) this.emit(`<${fullTag}>`, node, parent);
 
 			if (!closed) {
 				let innerRegEx = new RegExp(`([^]+?)<\/${tag}>`, 'g');
-				innerRegEx.lastIndex = elemRegEx.lastIndex;
+				innerRegEx.lastIndex = nodeRegEx.lastIndex;
 				let innerMatch = innerRegEx.exec(xml);
 				if (innerMatch && innerMatch[1]) {
-					elemRegEx.lastIndex = innerRegEx.lastIndex;
+					nodeRegEx.lastIndex = innerRegEx.lastIndex;
 					let innerNodes = this.parse(innerMatch[1], node, fullTag);
 					if (innerNodes.length > 0) node.innerNodes = innerNodes;
 					else node.innerText = innerMatch[1];
@@ -44,7 +44,7 @@ module.exports = class{
 				this.parentMap.set(node, parent);
 			}
 
-			this.emit(`</${fullTag}>`, node, parent);
+			if (this.progressive) this.emit(`</${fullTag}>`, node, parent);
 			nodes.push(node);
 		}
 
