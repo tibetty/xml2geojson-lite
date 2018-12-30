@@ -52,7 +52,7 @@ module.exports = (osm, opts) => {
 			}
 
 			let rs = [], way = null;
-			while (way = this.ways.pop()) {
+			while (way = this.ways.shift()) {
 				removeFromMap(this.firstMap, coordsToKey(first(way)), way);
 				removeFromMap(this.lastMap, coordsToKey(last(way)), way);
 
@@ -149,7 +149,7 @@ module.exports = (osm, opts) => {
 		
 		// link inner polygons to outer containers
 		let innerRing = null;
-		while (innerRing = innerRings.pop()) {
+		while (innerRing = innerRings.shift()) {
 			for (let idx in outerRings) {
 				if (ptInsidePolygon(first(innerRing), outerRings[idx])) {
 					compositPolyons[idx].push(innerRing);
