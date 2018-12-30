@@ -1,9 +1,10 @@
+const XmlParser = require('./xmlparser.js');
+
 module.exports = (osm, opts) => {
-	const XmlParser = require('./xmlparser.js');
-	
-	let coordsToKey = (a) => a.join(',');
+
 	let first = a => a[0];
 	let last = a => a[a.length - 1];
+	let coordsToKey = (a) => a.join(',');
 
 	let addToMap = (m, k, v) => {
 		let a = m[k];
@@ -20,51 +21,23 @@ module.exports = (osm, opts) => {
 		let a = m[k];
 		if (a && a.length > 0) return a[0];
 		return null;
-	}			
-
-	let outerWays = [], outerFirstMap = {}, outerLastMap = {};
-	let innerWays = [], innerFirstMap = {}, innerLastMap = {};
-	let features = [];
-	let relProps = {};
-
-	const xmlParser = new XmlParser({progressive: true});
-	xmlParser.addListener('</osm.relation.member>', node => {
-		with (node) {
-			if ($type === 'way') {
-				let way = [];
-				for (let innerNode of innerNodes) {
-					way.push([innerNode.$lon, innerNode.$lat]);
-				}
-				if ($role === 'inner') {
-					innerWays.push(way);
-					addToMap(innerFirstMap, coordsToKey(first(way)), way);
-					addToMap(innerLastMap, coordsToKey(last(way)), way);
-				} else if ($role === 'outer') {
-					outerWays.push(way);
-					addToMap(outerFirstMap, coordsToKey(first(way)), way);
-					addToMap(outerLastMap, coordsToKey(last(way)), way);
-				}
-			}
-			else if (opts && opts.allFeatures && $type === 'node') {
-				let feature = {type: 'Feature', id: `node/${$ref}`, properties: {id: `node/${$ref}`, role: $role}, geometry: {
-						type: 'Point',
-						coordinates: [parseFloat($lon), parseFloat($lat)]
-					}};
-				features.push(feature);
-			}
-		}
-	});
-
-	if (opts && opts.allFeatures) {
-		xmlParser.addListener('<osm.relation>', node => relProps.id = 'relation/' + node.$id);
-		xmlParser.addListener('<osm.relation.bounds>', node => relProps.bbox = [parseFloat(node.$minlon), parseFloat(node.$minlat), parseFloat(node.$maxlon), parseFloat(node.$maxlat)]);
-		xmlParser.addListener('</osm.relation.tag>', node => relProps[node.$k] = node.$v);
 	}
-	
-	xmlParser.parse(osm);
 
-	let constructGeometry = () => {
-		let constructRings = (ways, firstMap, lastMap, direction) => {
+	class Ways {
+		constructor() {
+			this.ways = [];
+			this.firstMap = {};
+			this.lastMap = {};
+		}
+
+		add(way) {
+			this.ways.push(way);
+			let firstKey = coordsToKey(first(way)), lastKey = coordsToKey(last(way));
+			addToMap(this.firstMap, firstKey, way);
+			addToMap(this.lastMap, lastKey, way);
+		}
+
+		toRings(direction) {
 			let isRing = a => coordsToKey(first(a)) === coordsToKey(last(a));
 			let strToFloat = el => el instanceof Array? el.map(strToFloat) : parseFloat(el);
 
@@ -79,9 +52,9 @@ module.exports = (osm, opts) => {
 			}
 
 			let rs = [], way = null;
-			while (way = ways.pop()) {
-				removeFromMap(firstMap, coordsToKey(first(way)), way);
-				removeFromMap(lastMap, coordsToKey(last(way)), way);
+			while (way = this.ways.pop()) {
+				removeFromMap(this.firstMap, coordsToKey(first(way)), way);
+				removeFromMap(this.lastMap, coordsToKey(last(way)), way);
 
 				if (isRing(way)) {
 					way = strToFloat(way);
@@ -96,16 +69,16 @@ module.exports = (osm, opts) => {
 						let key = coordsToKey(last(line));
 						reversed = false;
 
-						current = getFirstFromMap(firstMap, key);										
+						current = getFirstFromMap(this.firstMap, key);										
 						if (!current) {
-							current = getFirstFromMap(lastMap, key);
+							current = getFirstFromMap(this.lastMap, key);
 							reversed = true;
 						}
 						
 						if (current) {
-							ways.splice(ways.indexOf(current), 1);
-							removeFromMap(firstMap, coordsToKey(first(current)), current);
-							removeFromMap(lastMap, coordsToKey(last(current)), current);
+							this.ways.splice(this.ways.indexOf(current), 1);
+							removeFromMap(this.firstMap, coordsToKey(first(current)), current);
+							removeFromMap(this.lastMap, coordsToKey(last(current)), current);
 							if (reversed) current.reverse();
 							current = current.slice(1);
 						}
@@ -120,11 +93,42 @@ module.exports = (osm, opts) => {
 			}
 			return rs;
 		}
+	}
 
-		let outerRings = constructRings(outerWays, outerFirstMap, outerLastMap, 'counterclockwise'),
-			innerRings = constructRings(innerWays, innerFirstMap, innerLastMap, 'clockwise');
+	let innerWays = new Ways(), outerWays = new Ways();
+	let features = [], relProps = {};
+
+	const xmlParser = new XmlParser({progressive: true});
+	xmlParser.addListener('</osm.relation.member>', node => {
+		with (node) {
+			if ($type === 'way') {
+				let way = [];
+				for (let innerNode of innerNodes)
+					way.push([innerNode.$lon, innerNode.$lat]);
+				if ($role === 'inner') innerWays.add(way);				
+				else if ($role === 'outer') outerWays.add(way);
+			}
+			else if (opts && opts.allFeatures && $type === 'node') {
+				features.push({type: 'Feature', id: `node/${$ref}`, properties: {id: `node/${$ref}`, role: $role}, geometry: {
+					type: 'Point',
+					coordinates: [parseFloat($lon), parseFloat($lat)]
+				}});
+			}
+		}
+	});
+
+	if (opts && opts.allFeatures) {
+		xmlParser.addListener('<osm.relation>', node => relProps.id = 'relation/' + node.$id);
+		xmlParser.addListener('<osm.relation.bounds>', node => relProps.bbox = [parseFloat(node.$minlon), parseFloat(node.$minlat), parseFloat(node.$maxlon), parseFloat(node.$maxlat)]);
+		xmlParser.addListener('</osm.relation.tag>', node => relProps[node.$k] = node.$v);
+	}
+	
+	xmlParser.parse(osm);
+
+	let constructGeometry = (ows, iws) => {
+		let outerRings = ows.toRings('counterclockwise'),
+			innerRings = iws.toRings('clockwise');
 		
-		// link inner polygons to outer containers
 		let ptInsidePolygon = (pt, polygon, lngIdx, latIdx) => {
 			lngIdx = lngIdx || 0, latIdx = latIdx || 1;
 			let result = false;
@@ -143,6 +147,7 @@ module.exports = (osm, opts) => {
 			compositPolyons[idx] = [outerRings[idx]];
 		}
 		
+		// link inner polygons to outer containers
 		let innerRing = null;
 		while (innerRing = innerRings.pop()) {
 			for (let idx in outerRings) {
@@ -165,7 +170,7 @@ module.exports = (osm, opts) => {
 		}
 	}
 
-	let geometry = constructGeometry();
+	let geometry = constructGeometry(outerWays, innerWays);
 	if (!opts || !opts.allFeatures)
 		return geometry;
 

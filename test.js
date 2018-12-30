@@ -19,9 +19,4 @@ for (let file of xmlFiles) {
 	xml2geojson(content, {allFeatures: true});
 	etime = new Date().getTime();
 	console.log(`.${etime - stime}ms costed by xml2geojson-lite@allFeatures`);
-
-	stime = new Date().getTime();
-	xml2geojson(content);
-	etime = new Date().getTime();
-	console.log(`.${etime - stime}ms costed by xml2geojson-lite`);
 }
