@@ -43,7 +43,7 @@ module.exports = (osm, opts) => {
 
 			let ringDirection = (a, xIdx, yIdx) => {
 				xIdx = xIdx || 0, yIdx = yIdx || 1;
-				let m = a.reduce((last, v, current) => a[last][0] > v[0] ? last : current, 0);
+				let m = a.reduce((maxxIdx, v, idx) => a[maxxIdx][xIdx] > v[xIdx] ? maxxIdx : idx, 0);
 				let l = m <= 0? a.length - 1 : m - 1, r = m >= a.length - 1? 0 : m + 1;
 				let xa = a[l][xIdx], xb = a[m][xIdx], xc = a[r][xIdx];
 				let ya = a[l][yIdx], yb = a[m][yIdx], yc = a[r][yIdx];
@@ -51,7 +51,7 @@ module.exports = (osm, opts) => {
 				return det < 0 ? 'clockwise' : 'counterclockwise';
 			}
 
-			let rs = [], way = null;
+			let rings = [], way = null;
 			while (way = this.ways.shift()) {
 				removeFromMap(this.firstMap, coordsToKey(first(way)), way);
 				removeFromMap(this.lastMap, coordsToKey(last(way)), way);
@@ -59,7 +59,7 @@ module.exports = (osm, opts) => {
 				if (isRing(way)) {
 					way = strToFloat(way);
 					if (ringDirection(way) !== direction) way.reverse();
-					rs.push(way);
+					rings.push(way);
 				} else {
 					let line = [];
 					let current = way;
@@ -79,7 +79,15 @@ module.exports = (osm, opts) => {
 							this.ways.splice(this.ways.indexOf(current), 1);
 							removeFromMap(this.firstMap, coordsToKey(first(current)), current);
 							removeFromMap(this.lastMap, coordsToKey(last(current)), current);
-							if (reversed) current.reverse();
+							if (reversed) {
+								// reverse the shorter line to save time
+								if (current.length <= line.length)
+									current.reverse();
+								else {
+									line.reverse();
+									[current, line] = [line, current];
+								}
+							}
 							current = current.slice(1);
 						}
 					}
@@ -87,11 +95,11 @@ module.exports = (osm, opts) => {
 					if (isRing(line)) {
 						line = strToFloat(line);
 						if (ringDirection(line) !== direction) line.reverse();
-						rs.push(line);
+						rings.push(line);
 					}
 				}
 			}
-			return rs;
+			return rings;
 		}
 	}
 
@@ -99,21 +107,21 @@ module.exports = (osm, opts) => {
 	let features = [], relProps = {};
 
 	const xmlParser = new XmlParser({progressive: true});
-	xmlParser.addListener('</osm.relation.member>', node => {
+	xmlParser.addListener('</osm.relation.member[$type==="way"&&$role==="inner"]>', node => {
 		with (node) {
-			if ($type === 'way') {
-				let way = [];
-				for (let innerNode of innerNodes)
-					way.push([innerNode.$lon, innerNode.$lat]);
-				if ($role === 'inner') innerWays.add(way);				
-				else if ($role === 'outer') outerWays.add(way);
-			}
-			else if (opts && opts.allFeatures && $type === 'node') {
-				features.push({type: 'Feature', id: `node/${$ref}`, properties: {id: `node/${$ref}`, role: $role}, geometry: {
-					type: 'Point',
-					coordinates: [parseFloat($lon), parseFloat($lat)]
-				}});
-			}
+			let way = [];
+			for (let innerNode of innerNodes)
+				way.push([innerNode.$lon, innerNode.$lat]);
+			innerWays.add(way);				
+		}
+	});
+
+	xmlParser.addListener('</osm.relation.member[$type==="way"&&$role==="outer"]>', node => {
+		with (node) {
+			let way = [];
+			for (let innerNode of innerNodes)
+				way.push([innerNode.$lon, innerNode.$lat]);
+			outerWays.add(way);
 		}
 	});
 
@@ -121,6 +129,14 @@ module.exports = (osm, opts) => {
 		xmlParser.addListener('<osm.relation>', node => relProps.id = 'relation/' + node.$id);
 		xmlParser.addListener('<osm.relation.bounds>', node => relProps.bbox = [parseFloat(node.$minlon), parseFloat(node.$minlat), parseFloat(node.$maxlon), parseFloat(node.$maxlat)]);
 		xmlParser.addListener('</osm.relation.tag>', node => relProps[node.$k] = node.$v);
+		xmlParser.addListener('</osm.relation.member[$type==="node"]>', node => {
+			with (node) {
+				features.push({type: 'Feature', id: `node/${$ref}`, properties: {id: `node/${$ref}`, role: $role}, geometry: {
+					type: 'Point',
+					coordinates: [parseFloat($lon), parseFloat($lat)]
+				}});
+			}
+		});
 	}
 	
 	xmlParser.parse(osm);
