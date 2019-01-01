@@ -32,9 +32,8 @@ module.exports = (osm, opts) => {
 
 		add(way) {
 			this.ways.push(way);
-			let firstKey = coordsToKey(first(way)), lastKey = coordsToKey(last(way));
-			addToMap(this.firstMap, firstKey, way);
-			addToMap(this.lastMap, lastKey, way);
+			addToMap(this.firstMap, coordsToKey(first(way)), way);
+			addToMap(this.lastMap, coordsToKey(last(way)), way);
 		}
 
 		toRings(direction) {
@@ -66,6 +65,12 @@ module.exports = (osm, opts) => {
 					let reversed = false;
 					while (current) {
 						line = line.concat(current);
+						if (isRing(line)) {
+							line = strToFloat(line);
+							if (ringDirection(line) !== direction) line.reverse();
+							rings.push(line);
+							break;
+						}
 						let key = coordsToKey(last(line));
 						reversed = false;
 
@@ -90,12 +95,6 @@ module.exports = (osm, opts) => {
 							}
 							current = current.slice(1);
 						}
-					}
-					
-					if (isRing(line)) {
-						line = strToFloat(line);
-						if (ringDirection(line) !== direction) line.reverse();
-						rings.push(line);
 					}
 				}
 			}
@@ -145,13 +144,13 @@ module.exports = (osm, opts) => {
 		let outerRings = ows.toRings('counterclockwise'),
 			innerRings = iws.toRings('clockwise');
 		
-		let ptInsidePolygon = (pt, polygon, lngIdx, latIdx) => {
-			lngIdx = lngIdx || 0, latIdx = latIdx || 1;
+		let ptInsidePolygon = (pt, polygon, xIdx, yIdx) => {
+			xIdx = xIdx || 0, yIdx = yIdx || 1;
 			let result = false;
 			for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-				if ((polygon[i][lngIdx] <= pt[lngIdx] && pt[lngIdx] < polygon[j][lngIdx] ||
-					polygon[j][lngIdx] <= pt[lngIdx] && pt[lngIdx] < polygon[i][lngIdx]) &&
-					pt[latIdx] < (polygon[j][latIdx] - polygon[i][latIdx]) * (pt[lngIdx] - polygon[i][lngIdx]) / (polygon[j][lngIdx] - polygon[i][lngIdx]) + polygon[i][latIdx])
+				if ((polygon[i][xIdx] <= pt[xIdx] && pt[xIdx] < polygon[j][xIdx] ||
+					polygon[j][xIdx] <= pt[xIdx] && pt[xIdx] < polygon[i][xIdx]) &&
+					pt[yIdx] < (polygon[j][yIdx] - polygon[i][yIdx]) * (pt[xIdx] - polygon[i][xIdx]) / (polygon[j][xIdx] - polygon[i][xIdx]) + polygon[i][yIdx])
 					result = !result;
 			}
 			return result;

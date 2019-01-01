@@ -32,7 +32,7 @@
   "bundleDependencies": false,
   "dependencies": {},
   "deprecated": false,
-  "description": "a lightweight yet faster osm xml to geojson convertor - about 8x faster than xmldom + osmtogeojson in most situations - implemented in pure JavaScript without any 3rd party dependency",
+  "description": "a lightweight yet faster osm xml to geojson convertor - 4x faster than xmldom + osmtogeojson in most situations - implemented in pure JavaScript without any 3rd party dependency",
   "homepage": "https://github.com/tibetty/xml2geojson-lite#readme",
   "keywords": [
     "openstreetmap",

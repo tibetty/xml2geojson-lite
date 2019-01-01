@@ -44,7 +44,7 @@ module.exports = (osm, opts) => {
 
 			let ringDirection = (a, xIdx, yIdx) => {
 				xIdx = xIdx || 0, yIdx = yIdx || 1;
-				let m = a.reduce((last, v, current) => a[last][0] > v[0] ? last : current, 0);
+				let m = a.reduce((maxxIdx, v, idx) => a[maxxIdx][xIdx] > v[xIdx] ? maxxIdx : idx, 0);
 				let l = m <= 0? a.length - 1 : m - 1, r = m >= a.length - 1? 0 : m + 1;
 				let xa = a[l][xIdx], xb = a[m][xIdx], xc = a[r][xIdx];
 				let ya = a[l][yIdx], yb = a[m][yIdx], yc = a[r][yIdx];
@@ -52,7 +52,7 @@ module.exports = (osm, opts) => {
 				return det < 0 ? 'clockwise' : 'counterclockwise';
 			}
 
-			let rs = [], way = null;
+			let rings = [], way = null;
 			while (way = this.ways.shift()) {
 				removeFromMap(this.firstMap, coordsToKey(first(way)), way);
 				removeFromMap(this.lastMap, coordsToKey(last(way)), way);
@@ -60,7 +60,7 @@ module.exports = (osm, opts) => {
 				if (isRing(way)) {
 					way = strToFloat(way);
 					if (ringDirection(way) !== direction) way.reverse();
-					rs.push(way);
+					rings.push(way);
 				} else {
 					let line = [];
 					let current = way;
@@ -80,7 +80,15 @@ module.exports = (osm, opts) => {
 							this.ways.splice(this.ways.indexOf(current), 1);
 							removeFromMap(this.firstMap, coordsToKey(first(current)), current);
 							removeFromMap(this.lastMap, coordsToKey(last(current)), current);
-							if (reversed) current.reverse();
+							if (reversed) {
+								// reverse the shorter line to save time
+								if (current.length <= line.length)
+									current.reverse();
+								else {
+									line.reverse();
+									[current, line] = [line, current];
+								}
+							}
 							current = current.slice(1);
 						}
 					}
@@ -88,11 +96,11 @@ module.exports = (osm, opts) => {
 					if (isRing(line)) {
 						line = strToFloat(line);
 						if (ringDirection(line) !== direction) line.reverse();
-						rs.push(line);
+						rings.push(line);
 					}
 				}
 			}
-			return rs;
+			return rings;
 		}
 	}
 
@@ -100,21 +108,21 @@ module.exports = (osm, opts) => {
 	let features = [], relProps = {};
 
 	const xmlParser = new XmlParser({progressive: true});
-	xmlParser.addListener('</osm.relation.member>', node => {
+	xmlParser.addListener('</osm.relation.member[$type==="way"&&$role==="inner"]>', node => {
 		with (node) {
-			if ($type === 'way') {
-				let way = [];
-				for (let innerNode of innerNodes)
-					way.push([innerNode.$lon, innerNode.$lat]);
-				if ($role === 'inner') innerWays.add(way);				
-				else if ($role === 'outer') outerWays.add(way);
-			}
-			else if (opts && opts.allFeatures && $type === 'node') {
-				features.push({type: 'Feature', id: `node/${$ref}`, properties: {id: `node/${$ref}`, role: $role}, geometry: {
-					type: 'Point',
-					coordinates: [parseFloat($lon), parseFloat($lat)]
-				}});
-			}
+			let way = [];
+			for (let innerNode of innerNodes)
+				way.push([innerNode.$lon, innerNode.$lat]);
+			innerWays.add(way);				
+		}
+	});
+
+	xmlParser.addListener('</osm.relation.member[$type==="way"&&$role==="outer"]>', node => {
+		with (node) {
+			let way = [];
+			for (let innerNode of innerNodes)
+				way.push([innerNode.$lon, innerNode.$lat]);
+			outerWays.add(way);
 		}
 	});
 
@@ -122,6 +130,14 @@ module.exports = (osm, opts) => {
 		xmlParser.addListener('<osm.relation>', node => relProps.id = 'relation/' + node.$id);
 		xmlParser.addListener('<osm.relation.bounds>', node => relProps.bbox = [parseFloat(node.$minlon), parseFloat(node.$minlat), parseFloat(node.$maxlon), parseFloat(node.$maxlat)]);
 		xmlParser.addListener('</osm.relation.tag>', node => relProps[node.$k] = node.$v);
+		xmlParser.addListener('</osm.relation.member[$type==="node"]>', node => {
+			with (node) {
+				features.push({type: 'Feature', id: `node/${$ref}`, properties: {id: `node/${$ref}`, role: $role}, geometry: {
+					type: 'Point',
+					coordinates: [parseFloat($lon), parseFloat($lat)]
+				}});
+			}
+		});
 	}
 	
 	xmlParser.parse(osm);
@@ -179,93 +195,136 @@ module.exports = (osm, opts) => {
 	return {type: 'FeatureCollection', features};
 }
 },{"./xmlparser.js":2}],2:[function(require,module,exports){
-module.exports = class{
-	constructor(opts) {
-		if (opts) {
-			this.queryParent = opts.queryParent? true : false;
-			this.progressive = opts.progressive;
-			if (this.queryParent) this.parentMap = new WeakMap();
-		}
-		this.evtListeners = {};
+module.exports = (() => {
+	function conditioned(evt) {
+		return evt.match(/^(.+?)\[(.+?)\]>$/g) != null;
 	}
 
-	parse(xml, parent, dir) {
-		dir = dir? dir + '.' : '';
-		let nodeRegEx = /<([^ >\/]+)(.*?)>/g, nodeMatch = null, nodes = [];
-		while (nodeMatch = nodeRegEx.exec(xml)) {
-			let tag = nodeMatch[1], node = {tag}, fullTag = dir + tag; 
+	function parseEvent(evt) {
+		let stages = [];
+		let match = /^(.+?)\[(.+?)\]>$/g.exec(evt);
+		if (match)
+			return {evt: match[1] + '>', exp: match[2]};
+		return {evt: evt};
+	}
 
-			let closed = false;
-			let attRegEx = /([^ ]+?)="(.+?)"/g, attrText = nodeMatch[2].trim(), attMatch = null;
-			if (attrText.endsWith('/') || tag.startsWith('?') || tag.startsWith('!')) {
-				closed = true;
+	function genConditionFunc(cond) {
+		let statement = 'return ' + cond.replace(/(\$.+?)(?=[=!.])/g, 'node.$&') + ';';
+		return new Function('node', statement);
+	}
+
+	return class {
+		constructor(opts) {
+			if (opts) {
+				this.queryParent = opts.queryParent? true : false;
+				this.progressive = opts.progressive;
+				if (this.queryParent) this.parentMap = new WeakMap();
+			}
+			this.evtListeners = {};
+		}
+
+		parse(xml, parent, dir) {
+			dir = dir? dir + '.' : '';
+			let nodeRegEx = /<([^ >\/]+)(.*?)>/mg, nodeMatch = null, nodes = [];
+			// let nodeRegEx = /<([^ >\/]+)(.*?)>/mg, nodeMatch = null, nodes = [];
+			while (nodeMatch = nodeRegEx.exec(xml)) {
+				let tag = nodeMatch[1], node = {tag}, fullTag = dir + tag; 
+
+				let closed = false;
+				let attRegEx = /([^ ]+?)="(.+?)"/g, attrText = nodeMatch[2].trim(), attMatch = null;
+				if (attrText.endsWith('/') || tag.startsWith('?') || tag.startsWith('!')) {
+					closed = true;
+				}
+
+				let hasAttrs = false;
+				while (attMatch = attRegEx.exec(attrText)) {
+					hasAttrs = true;
+					node[`$${attMatch[1]}`] = attMatch[2];
+				}
+
+				if (!hasAttrs && attrText !== '') node.text = attrText;
+				this.emit(`<${fullTag}>`, node, parent);
+
+				if (!closed) {
+					let innerRegEx = new RegExp(`([^]+?)<\/${tag}>`, 'g');
+					innerRegEx.lastIndex = nodeRegEx.lastIndex;
+					let innerMatch = innerRegEx.exec(xml);
+					if (innerMatch && innerMatch[1]) {
+						nodeRegEx.lastIndex = innerRegEx.lastIndex;
+						let innerNodes = this.parse(innerMatch[1], node, fullTag);
+						if (innerNodes.length > 0) node.innerNodes = innerNodes;
+						else node.innerText = innerMatch[1];
+					}
+				}
+				if (this.queryParent && parent) {
+					this.parentMap.set(node, parent);
+				}
+
+				if (this.progressive) this.emit(`</${fullTag}>`, node, parent);
+				nodes.push(node);
 			}
 
-			let hasAttrs = false;
-			while (attMatch = attRegEx.exec(attrText)) {
-				hasAttrs = true;
-				node[`$${attMatch[1]}`] = attMatch[2];
+			return nodes;
+		}
+
+		getParent(node) {
+			if (this.queryParent)
+				return this.parentMap.get(node);
+			return null;
+		}
+
+		$addListener(evt, func) {
+			let funcs = this.evtListeners[evt];
+			if (funcs) funcs.push(func);
+			else this.evtListeners[evt] = [func];
+		}
+
+		// support javascript condition for the last tag
+		addListener(evt, func) {
+			if (conditioned(evt)) {
+				// func.prototype = evt;
+				evt = parseEvent(evt);	
+				func.precondition = genConditionFunc(evt.exp);
+				evt = evt.evt;
 			}
+			this.$addListener(evt, func);
+		}
 
-			if (!hasAttrs && attrText !== '') node.text = attrText;
-			if (this.progressive) this.emit(`<${fullTag}>`, node, parent);
+		$removeListener(evt, func) {
+			let funcs = this.evtListeners[evt];
+			if (funcs) {
+				funcs.splice(funcs.indexOf(func), 1);
+			}
+		}
 
-			if (!closed) {
-				let innerRegEx = new RegExp(`([^]+?)<\/${tag}>`, 'g');
-				innerRegEx.lastIndex = nodeRegEx.lastIndex;
-				let innerMatch = innerRegEx.exec(xml);
-				if (innerMatch && innerMatch[1]) {
-					nodeRegEx.lastIndex = innerRegEx.lastIndex;
-					let innerNodes = this.parse(innerMatch[1], node, fullTag);
-					if (innerNodes.length > 0) node.innerNodes = innerNodes;
-					else node.innerText = innerMatch[1];
+		removeListener(evt, func) {
+			if (conditioned(evt)) {
+				evt = parseEvent(evt);	
+				evt = evt.evt;
+			}
+			this.$removeListener(evt, func);
+		}
+
+		emit(evt, ...args) {
+			let funcs = this.evtListeners[evt];
+			if (funcs) {
+				for (let func of funcs) {
+					if (func.precondition) {
+						if (func.precondition.apply(null, args) === true)
+							func.apply(null, args);
+					} else 
+						func.apply(null, args);
 				}
 			}
-			if (this.queryParent && parent) {
-				this.parentMap.set(node, parent);
-			}
-
-			if (this.progressive) this.emit(`</${fullTag}>`, node, parent);
-			nodes.push(node);
 		}
 
-		return nodes;
-	}
-
-	getParent(node) {
-		if (this.queryParent)
-			return this.parentMap.get(node);
-		return null;
-	}
-
-	addListener(evt, func) {
-		let funcs = this.evtListeners[evt];
-		if (funcs) funcs.push(func);
-		else this.evtListeners[evt] = [func];
-	}
-
-	removeListener(evt, func) {
-		let funcs = this.evtListeners[evt];
-		if (funcs) {
-			funcs.splice(funcs.indexOf(func), 1);
+		on(evt, func) {
+			this.addListener(evt, func);
 		}
-	}
 
-	emit(evt, ...args) {
-		let funcs = this.evtListeners[evt];
-		if (funcs) {
-			for (let func of funcs) {
-				func.apply(null, args);
-			}
+		off(evt, func) {
+			this.removeListener(evt, func);
 		}
-	}
-
-	on(evt, func) {
-		this.addListener(evt, func);
-	}
-
-	off(evt, func) {
-		this.removeListener(evt, func);
-	}
-};
+	};
+})();
 },{}]},{},[1]);

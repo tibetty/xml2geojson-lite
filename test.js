@@ -10,9 +10,10 @@ for (let file of xmlFiles) {
 	console.log(`---processing time comparison for ${file}---`);
 	let stime = new Date().getTime();
 	xml2geojson(osm, {allFeatures: true});
-	// geojsons.push(xml2geojson(osm, {allFeatures: true}));
 	let etime = new Date().getTime();
 	console.log(`.${etime - stime}ms costed by xml2geojson-lite@allFeatures`);
+
+	// geojsons.push(xml2geojson(osm, {allFeatures: true}));
 
 	stime = new Date().getTime();
 	const osmdom = new DOMParser().parseFromString(osm);
