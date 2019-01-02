@@ -33,9 +33,8 @@ module.exports = (osm, opts) => {
 
 		add(way) {
 			this.ways.push(way);
-			let firstKey = coordsToKey(first(way)), lastKey = coordsToKey(last(way));
-			addToMap(this.firstMap, firstKey, way);
-			addToMap(this.lastMap, lastKey, way);
+			addToMap(this.firstMap, coordsToKey(first(way)), way);
+			addToMap(this.lastMap, coordsToKey(last(way)), way);
 		}
 
 		toRings(direction) {
@@ -56,48 +55,47 @@ module.exports = (osm, opts) => {
 			while (way = this.ways.shift()) {
 				removeFromMap(this.firstMap, coordsToKey(first(way)), way);
 				removeFromMap(this.lastMap, coordsToKey(last(way)), way);
-
+				// self-contained ring
 				if (isRing(way)) {
 					way = strToFloat(way);
-					if (ringDirection(way) !== direction) way.reverse();
+					if (ringDirection(way) !== direction) {
+						way.reverse();
+					}
 					rings.push(way);
-				} else {
-					let line = [];
-					let current = way;
-					let reversed = false;
-					while (current) {
-						line = line.concat(current);
-						let key = coordsToKey(last(line));
-						reversed = false;
+				}
+				// need to do concatenation to form a ring
+				else {
+					let current = way, next = null;
+					do {
+						let key = coordsToKey(last(current)), reversed = false;
 
-						current = getFirstFromMap(this.firstMap, key);										
-						if (!current) {
-							current = getFirstFromMap(this.lastMap, key);
+						next = getFirstFromMap(this.firstMap, key);										
+						if (!next) {
+							next = getFirstFromMap(this.lastMap, key);
 							reversed = true;
 						}
 						
-						if (current) {
-							this.ways.splice(this.ways.indexOf(current), 1);
-							removeFromMap(this.firstMap, coordsToKey(first(current)), current);
-							removeFromMap(this.lastMap, coordsToKey(last(current)), current);
+						if (next) {
+							this.ways.splice(this.ways.indexOf(next), 1);
+							removeFromMap(this.firstMap, coordsToKey(first(next)), next);
+							removeFromMap(this.lastMap, coordsToKey(last(next)), next);
 							if (reversed) {
-								// reverse the shorter line to save time
-								if (current.length <= line.length)
-									current.reverse();
-								else {
-									line.reverse();
-									[current, line] = [line, current];
-								}
+								// always reverse shorter one to save time
+								if (next.length > current.length)
+									[current, next] = [next, current];
+								next.reverse();
 							}
-							current = current.slice(1);
+
+							current = current.concat(next.slice(1));
+							if (isRing(current)) {
+								current = strToFloat(current);
+								if (ringDirection(current) !== direction) {
+									current.reverse();
+								}
+								rings.push(current);
+							}
 						}
-					}
-					
-					if (isRing(line)) {
-						line = strToFloat(line);
-						if (ringDirection(line) !== direction) line.reverse();
-						rings.push(line);
-					}
+					} while (next);
 				}
 			}
 			return rings;
@@ -146,13 +144,13 @@ module.exports = (osm, opts) => {
 		let outerRings = ows.toRings('counterclockwise'),
 			innerRings = iws.toRings('clockwise');
 		
-		let ptInsidePolygon = (pt, polygon, lngIdx, latIdx) => {
-			lngIdx = lngIdx || 0, latIdx = latIdx || 1;
+		let ptInsidePolygon = (pt, polygon, xIdx, yIdx) => {
+			xIdx = xIdx || 0, yIdx = yIdx || 1;
 			let result = false;
 			for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-				if ((polygon[i][lngIdx] <= pt[lngIdx] && pt[lngIdx] < polygon[j][lngIdx] ||
-					polygon[j][lngIdx] <= pt[lngIdx] && pt[lngIdx] < polygon[i][lngIdx]) &&
-					pt[latIdx] < (polygon[j][latIdx] - polygon[i][latIdx]) * (pt[lngIdx] - polygon[i][lngIdx]) / (polygon[j][lngIdx] - polygon[i][lngIdx]) + polygon[i][latIdx])
+				if ((polygon[i][xIdx] <= pt[xIdx] && pt[xIdx] < polygon[j][xIdx] ||
+					polygon[j][xIdx] <= pt[xIdx] && pt[xIdx] < polygon[i][xIdx]) &&
+					pt[yIdx] < (polygon[j][yIdx] - polygon[i][yIdx]) * (pt[xIdx] - polygon[i][xIdx]) / (polygon[j][xIdx] - polygon[i][xIdx]) + polygon[i][yIdx])
 					result = !result;
 			}
 			return result;
@@ -201,7 +199,6 @@ module.exports = (() => {
 	}
 
 	function parseEvent(evt) {
-		let stages = [];
 		let match = /^(.+?)\[(.+?)\]>$/g.exec(evt);
 		if (match)
 			return {evt: match[1] + '>', exp: match[2]};
@@ -209,8 +206,8 @@ module.exports = (() => {
 	}
 
 	function genConditionFunc(cond) {
-		let statement = 'return ' + cond.replace(/(\$.+?)(?=[=!.])/g, 'node.$&') + ';';
-		return new Function('node', statement);
+		let body = 'return ' + cond.replace(/(\$.+?)(?=[=!.])/g, 'node.$&') + ';';
+		return new Function('node', body);
 	}
 
 	return class {
@@ -226,24 +223,22 @@ module.exports = (() => {
 		parse(xml, parent, dir) {
 			dir = dir? dir + '.' : '';
 			let nodeRegEx = /<([^ >\/]+)(.*?)>/mg, nodeMatch = null, nodes = [];
-			// let nodeRegEx = /<([^ >\/]+)(.*?)>/mg, nodeMatch = null, nodes = [];
 			while (nodeMatch = nodeRegEx.exec(xml)) {
 				let tag = nodeMatch[1], node = {tag}, fullTag = dir + tag; 
 
-				let closed = false;
-				let attRegEx = /([^ ]+?)="(.+?)"/g, attrText = nodeMatch[2].trim(), attMatch = null;
+				let attrText = nodeMatch[2].trim(), closed = false;
 				if (attrText.endsWith('/') || tag.startsWith('?') || tag.startsWith('!')) {
 					closed = true;
 				}
 
-				let hasAttrs = false;
+				let attRegEx = /([^ ]+?)="(.+?)"/g, attMatch = null, hasAttrs = false;
 				while (attMatch = attRegEx.exec(attrText)) {
 					hasAttrs = true;
 					node[`$${attMatch[1]}`] = attMatch[2];
 				}
 
 				if (!hasAttrs && attrText !== '') node.text = attrText;
-				this.emit(`<${fullTag}>`, node, parent);
+				if (this.progressive) this.emit(`<${fullTag}>`, node, parent);
 
 				if (!closed) {
 					let innerRegEx = new RegExp(`([^]+?)<\/${tag}>`, 'g');
@@ -284,7 +279,7 @@ module.exports = (() => {
 			if (conditioned(evt)) {
 				// func.prototype = evt;
 				evt = parseEvent(evt);	
-				func.precondition = genConditionFunc(evt.exp);
+				func.condition = genConditionFunc(evt.exp);
 				evt = evt.evt;
 			}
 			this.$addListener(evt, func);
@@ -309,8 +304,8 @@ module.exports = (() => {
 			let funcs = this.evtListeners[evt];
 			if (funcs) {
 				for (let func of funcs) {
-					if (func.precondition) {
-						if (func.precondition.apply(null, args) === true)
+					if (func.condition) {
+						if (func.condition.apply(null, args) === true)
 							func.apply(null, args);
 					} else 
 						func.apply(null, args);

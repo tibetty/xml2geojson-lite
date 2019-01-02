@@ -4,7 +4,6 @@ module.exports = (() => {
 	}
 
 	function parseEvent(evt) {
-		let stages = [];
 		let match = /^(.+?)\[(.+?)\]>$/g.exec(evt);
 		if (match)
 			return {evt: match[1] + '>', exp: match[2]};
