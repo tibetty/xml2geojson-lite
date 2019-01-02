@@ -84,16 +84,14 @@ module.exports = (osm, opts) => {
 									[current, next] = [next, current];
 								next.reverse();
 							}
-							next.splice(0, 1);
 
-							current = current.concat(next);
+							current = current.concat(next.slice(1));
 							if (isRing(current)) {
 								current = strToFloat(current);
 								if (ringDirection(current) !== direction) {
 									current.reverse();
 								}
 								rings.push(current);
-								break;
 							}
 						}
 					} while (next);

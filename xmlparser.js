@@ -29,24 +29,22 @@ module.exports = (() => {
 		parse(xml, parent, dir) {
 			dir = dir? dir + '.' : '';
 			let nodeRegEx = /<([^ >\/]+)(.*?)>/mg, nodeMatch = null, nodes = [];
-			// let nodeRegEx = /<([^ >\/]+)(.*?)>/mg, nodeMatch = null, nodes = [];
 			while (nodeMatch = nodeRegEx.exec(xml)) {
 				let tag = nodeMatch[1], node = {tag}, fullTag = dir + tag; 
 
-				let closed = false;
-				let attRegEx = /([^ ]+?)="(.+?)"/g, attrText = nodeMatch[2].trim(), attMatch = null;
+				let attrText = nodeMatch[2].trim(), closed = false;
 				if (attrText.endsWith('/') || tag.startsWith('?') || tag.startsWith('!')) {
 					closed = true;
 				}
 
-				let hasAttrs = false;
+				let attRegEx = /([^ ]+?)="(.+?)"/g, attMatch = null, hasAttrs = false;
 				while (attMatch = attRegEx.exec(attrText)) {
 					hasAttrs = true;
 					node[`$${attMatch[1]}`] = attMatch[2];
 				}
 
 				if (!hasAttrs && attrText !== '') node.text = attrText;
-				this.emit(`<${fullTag}>`, node, parent);
+				if (this.progressive) this.emit(`<${fullTag}>`, node, parent);
 
 				if (!closed) {
 					let innerRegEx = new RegExp(`([^]+?)<\/${tag}>`, 'g');
