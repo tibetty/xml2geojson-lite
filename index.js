@@ -54,48 +54,49 @@ module.exports = (osm, opts) => {
 			while (way = this.ways.shift()) {
 				removeFromMap(this.firstMap, coordsToKey(first(way)), way);
 				removeFromMap(this.lastMap, coordsToKey(last(way)), way);
-
+				// self-contained ring
 				if (isRing(way)) {
 					way = strToFloat(way);
-					if (ringDirection(way) !== direction) way.reverse();
+					if (ringDirection(way) !== direction) {
+						way.reverse();
+					}
 					rings.push(way);
-				} else {
-					let line = [];
-					let current = way;
-					let reversed = false;
-					while (current) {
-						line = line.concat(current);
-						if (isRing(line)) {
-							line = strToFloat(line);
-							if (ringDirection(line) !== direction) line.reverse();
-							rings.push(line);
-							break;
-						}
-						let key = coordsToKey(last(line));
-						reversed = false;
+				}
+				// need to do concatenation to form a ring
+				else {
+					let current = way, next = null;
+					do {
+						let key = coordsToKey(last(current)), reversed = false;
 
-						current = getFirstFromMap(this.firstMap, key);										
-						if (!current) {
-							current = getFirstFromMap(this.lastMap, key);
+						next = getFirstFromMap(this.firstMap, key);										
+						if (!next) {
+							next = getFirstFromMap(this.lastMap, key);
 							reversed = true;
 						}
 						
-						if (current) {
-							this.ways.splice(this.ways.indexOf(current), 1);
-							removeFromMap(this.firstMap, coordsToKey(first(current)), current);
-							removeFromMap(this.lastMap, coordsToKey(last(current)), current);
+						if (next) {
+							this.ways.splice(this.ways.indexOf(next), 1);
+							removeFromMap(this.firstMap, coordsToKey(first(next)), next);
+							removeFromMap(this.lastMap, coordsToKey(last(next)), next);
 							if (reversed) {
-								// reverse the shorter line to save time
-								if (current.length <= line.length)
-									current.reverse();
-								else {
-									line.reverse();
-									[current, line] = [line, current];
-								}
+								// always reverse shorter one to save time
+								if (next.length > current.length)
+									[current, next] = [next, current];
+								next.reverse();
 							}
-							current = current.slice(1);
+							next.splice(0, 1);
+
+							current = current.concat(next);
+							if (isRing(current)) {
+								current = strToFloat(current);
+								if (ringDirection(current) !== direction) {
+									current.reverse();
+								}
+								rings.push(current);
+								break;
+							}
 						}
-					}
+					} while (next);
 				}
 			}
 			return rings;

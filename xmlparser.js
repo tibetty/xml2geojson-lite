@@ -12,8 +12,8 @@ module.exports = (() => {
 	}
 
 	function genConditionFunc(cond) {
-		let statement = 'return ' + cond.replace(/(\$.+?)(?=[=!.])/g, 'node.$&') + ';';
-		return new Function('node', statement);
+		let body = 'return ' + cond.replace(/(\$.+?)(?=[=!.])/g, 'node.$&') + ';';
+		return new Function('node', body);
 	}
 
 	return class {
@@ -87,7 +87,7 @@ module.exports = (() => {
 			if (conditioned(evt)) {
 				// func.prototype = evt;
 				evt = parseEvent(evt);	
-				func.precondition = genConditionFunc(evt.exp);
+				func.condition = genConditionFunc(evt.exp);
 				evt = evt.evt;
 			}
 			this.$addListener(evt, func);
@@ -112,8 +112,8 @@ module.exports = (() => {
 			let funcs = this.evtListeners[evt];
 			if (funcs) {
 				for (let func of funcs) {
-					if (func.precondition) {
-						if (func.precondition.apply(null, args) === true)
+					if (func.condition) {
+						if (func.condition.apply(null, args) === true)
 							func.apply(null, args);
 					} else 
 						func.apply(null, args);
