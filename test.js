@@ -3,7 +3,7 @@ const fs = require('fs'),
 	osmtogeojson = require('osmtogeojson'),
 	xml2geojson = require('./index.js');
 
-const xmlFiles = ['zhucheng.xml', 'hebei.xml', 'tokyodo.xml', 'usa.xml'];
+const xmlFiles = ['zhucheng.osm', 'hebei.osm', 'tokyodo.osm', 'usa.osm', 'original.osm'];
 // let geojsons = [];
 for (let file of xmlFiles) {
 	let osm = fs.readFileSync(file, 'utf-8');

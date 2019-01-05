@@ -30,7 +30,10 @@
     "url": "https://github.com/tibetty/xml2geojson-lite/issues"
   },
   "bundleDependencies": false,
-  "dependencies": {},
+  "dependencies": {
+    "osmtogeojson": "^3.0.0-beta.3",
+    "xmldom": "^0.1.27"
+  },
   "deprecated": false,
   "description": "a lightweight yet faster osm xml to geojson convertor - 4x faster than xmldom + osmtogeojson in most situations - implemented in pure JavaScript without any 3rd party dependency",
   "homepage": "https://github.com/tibetty/xml2geojson-lite#readme",
