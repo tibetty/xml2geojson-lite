@@ -190,7 +190,7 @@ module.exports = (osm, opts) => {
 		with (node) {
 			let way = [];
 			if (node.innerNodes) {
-				for (let nd of node.innerNodes) {
+				for (let nd of innerNodes) {
 					if (nd.$lon && nd.$lat)
 						way.push([nd.$lon, nd.$lat]);
 					else if (nd.$ref) {

@@ -3,6 +3,10 @@ xml2geojson-lite
 
 A lightweight yet faster convertor for [OSM](http://openstreetmap.org) [data](http://wiki.openstreetmap.org/wiki/OSM_XML) to [GeoJSON](http://www.geojson.org/) - much faster than xmldom + osmtogeojson in most situations - implemented in pure JavaScript without any 3rd party dependency
 
+Notice
+-----
+After rounds of refactoring and feature enhancement, this package has been upgraded to [osm2geojson-lite](https://www.npmjs.com/package/osm2geojson-lite). Important changes include: 1) support the conversion from OSM/Overpass JSON; 2) support the exportation of any unreferenced geographic elements.  From now on, the author's maintenance efforts will be shifted to this new package with richer features, so if applicable please stay with me by migrating your projects to `osm2geojson-lite`.  Thanks!
+
 Usage
 -----
 
@@ -30,7 +34,7 @@ Usage:
 API
 ---
 
-### `osmtogeojson(osm_xml, opts)`
+### `osm2geojson(osm_xml, opts)`
 
 Converts OSM XML data to GeoJSON.
 
